@@ -1,129 +1,124 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: vandries
- * Date: 14/03/2016
- * Time: 20:28
- */
 
 namespace MusicStory\SDK;
 
+use League\Oauth1\Client\Credentials\TokenCredentials;
+use League\OAuth1\Client\Server\Server;
+use League\OAuth1\Client\Server\User;
 
-class Signer
+class Signer extends Server
 {
 
     /**
-     * Sign methods
-     * @var array
-     */
-    protected $sign_methods = array('sha1');
-
-    private $consumerKey;
-    private $consumerSecret;
-
-    private $accessToken;
-    private $tokenSecret;
-
-    public function __construct (){
-
-    }
-
-    /**
-     * @param $url
-     * @param $params
-     * @param string $method
-     * @return string
-     * @throws \Exception
-     */
-    public function sign($url, $params, $method = 'GET', $token_request = false) {
-        if (!$url) {
-            throw new \Exception('NO URL');
-        }
-
-        if (!$token_request && (!$this->accessToken || !$this->tokenSecret))
-            $this->getToken();
-
-        $sign_method = (isset($params['oauth_signature_method'])) ? $params['oauth_signature_method'] : 'sha1';
-
-        if (!in_array($sign_method, $this->sign_methods)) {
-            throw new \Exception('Bad methode');
-        }
-
-        $params = $params ? $params : array();
-        $method = strtoupper($method);
-
-        $base_signature = $this->get_base_signature($method, $url);
-        $encrypt_key = $this->getEncryptKey($params);
-
-        $signature = base64_encode(hash_hmac($sign_method, $base_signature, $encrypt_key, true));
-
-        return $signature;
-    }
-
-
-    /**
-     * Get signature base
-     * @param string $method Http method
-     * @param string $url Url
-     * @param string $normalized_params Parameters string
+     * Get the URL for retrieving temporary credentials.
+     *
      * @return string
      */
-    private function get_base_signature($method, $url) {
-        $matches = array();
-        preg_match('@^(http://|https://)?([^/]+)(.*)$@i', $url, $matches);
-        $url = strtolower($matches[1] . $matches[2]) . $matches[3];
-        return http_build_query($method . '&' . $url, null, ini_get('arg_separator.output'), PHP_QUERY_RFC3986);
+    public function urlTemporaryCredentials()
+    {
+        return Context::API_URL . 'oauth/request_token';
     }
-
     /**
-     * Get encrypt key
+     * Get the URL for redirecting the resource owner to authorize the client.
+     *
      * @return string
      */
-    private function getEncryptKey($params) {
-        return http_build_query($params['consumerSecret'] . '&' . $this->TokenSecret, null, ini_get('arg_separator.output'), PHP_QUERY_RFC3986);
+    public function urlAuthorization()
+    {
+        return Context::API_URL . 'oauth/authorize';
     }
-
     /**
-     * @param null $consumer_key
-     * @param null $consumer_secret
-     * @return array
-     * @throws \Exception
+     * Get the URL retrieving token credentials.
+     *
+     * @return string
      */
-    public function getToken($params) {
-
-        if (!$params['consumer_key']) {
-            throw new \Exception('No consumer key');
-        }
-
-        if (!$params['consumer_secret']) {
-            throw new \Exception('No consumer secret');
-        }
-
-        $oauth_signature = $this->sign(API_URL, array('oauth_consumer_key' => $params['consumer_key']), 'GET', true);
-
-        $response = $this->request(API_URL . '?oauth_consumer_key=' . $params['consumer_key'] . '&oauth_signature=' . $oauth_signature, true);
-
-        $this->accessToken = $response['data']['token'];
-        $this->tokenSecret = $response['data']['token_secret'];
-
-        return true;
+    public function urlTokenCredentials()
+    {
+        return Context::API_URL . 'oauth/access_token';
     }
-
     /**
-     * Make an API request
-     * @param string $url Request url
-     * @param boolean $parse Return result or parsed result
-     * @return mixed (string/array)
+     * Get the URL for retrieving user details.
+     *
+     * @return string
      */
-    public function request($url, $parse = false) {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_URL, $url);
-        $answer = curl_exec($ch);
-        $format = 'xml';
-        foreach ($this->formats as $f) {
-            $format = (strpos($url, '.' . $f)) ? $f : $format;
-        }
-        return $parse ? $this->parse($answer, $format) : $answer;
+    public function urlUserDetails()
+    {
+        return Context::API_URL . "users";
+    }
+    /**
+     * Take the decoded data from the user details URL and convert
+     * it to a User object.
+     *
+     * @param mixed $data
+     * @param TokenCredentials $tokenCredentials
+     *
+     * @return User
+     */
+    public function userDetails($data, TokenCredentials $tokenCredentials)
+    {
+        $user = new User;
+        $arraySearchAndDestroy = function (array &$array, $key) {
+            if (!array_key_exists($key, $array)) {
+                return null;
+            }
+            $value = $array[$key];
+            unset($array[$key]);
+            return $value;
+        };
+        $user->uid = $arraySearchAndDestroy($data['user'], 'id');
+        $user->nickname = $arraySearchAndDestroy($data['user'], 'username');
+        $user->firstName = $arraySearchAndDestroy($data['user'], 'firstname');
+        $user->lastName = $arraySearchAndDestroy($data['user'], 'lastname');
+        $user->name = $arraySearchAndDestroy($data['user'], 'fullname');
+        $user->email = $arraySearchAndDestroy($data['user'], 'email');
+        $user->location = [
+            'city'    => $arraySearchAndDestroy($data['user'], 'city'),
+            'state'   => $arraySearchAndDestroy($data['user'], 'state'),
+            'country' => $arraySearchAndDestroy($data['user'], 'country')
+        ];
+        $user->description = $arraySearchAndDestroy($data['user'], 'about');
+        $user->imageUrl = $arraySearchAndDestroy($data['user'], 'userpic_https_url');
+        $user->urls = $arraySearchAndDestroy($data['user'], 'domain');
+        $user->extra = (array) $data['user'];
+        return $user;
+    }
+    /**
+     * Take the decoded data from the user details URL and extract
+     * the user's UID.
+     *
+     * @param mixed $data
+     * @param TokenCredentials $tokenCredentials
+     *
+     * @return string|int
+     */
+    public function userUid($data, TokenCredentials $tokenCredentials)
+    {
+        return $data['user']['id'];
+    }
+    /**
+     * Take the decoded data from the user details URL and extract
+     * the user's email.
+     *
+     * @param mixed $data
+     * @param TokenCredentials $tokenCredentials
+     *
+     * @return string
+     */
+    public function userEmail($data, TokenCredentials $tokenCredentials)
+    {
+        return $data['user']['email'];
+    }
+    /**
+     * Take the decoded data from the user details URL and extract
+     * the user's screen name.
+     *
+     * @param mixed $data
+     * @param TokenCredentials $tokenCredentials
+     *
+     * @return string
+     */
+    public function userScreenName($data, TokenCredentials $tokenCredentials)
+    {
+        return $data['user']['username'];
     }
 }

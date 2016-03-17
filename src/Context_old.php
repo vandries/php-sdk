@@ -131,29 +131,4 @@ echo $url."\n";
         return $data;
     }
 
-
-/**********************************************************************************************************************/
-
-    /**
-     * @return array
-     */
-    protected function getServerCredentialsMock()
-    {
-        return [
-            'identifier'   => $this->consumerKey,
-            'secret'       => $this->consumerSecret,
-            'callback_uri' => self::API_URL,
-        ];
-    }
-
-
-    /**
-     * @return \PHPUnit_Framework_MockObject_MockObject
-     */
-    protected function getCredentialsMock()
-    {
-        return $this->getMockBuilder('League\Oauth1\Client\Credentials\TokenCredentials')
-            ->getMock();
-    }
-
 }

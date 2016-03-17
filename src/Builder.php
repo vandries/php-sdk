@@ -7,6 +7,7 @@ class Builder
 {
     const TYPE_GET = "get";
     const TYPE_SEARCH = "search";
+    const TYPE_OAUTH = "oauth";
 
     const FORMAT_XML = "xml";
     const FORMAT_JSON = "json";
@@ -15,6 +16,8 @@ class Builder
     const REF_PARTNER = "partner";
 
     private $url;
+    private $consumerKey;
+    private $accessToken;
     private $format = self::FORMAT_XML;
     private $type = self::TYPE_SEARCH;
     private $ref = self::REF_CLASSIC;
@@ -29,11 +32,20 @@ class Builder
     private $fields;
     private $page = 1;
     private $limit = 10;
-    private $sign;
+    private $signature;
 
-    public function __construct($url)
+    public function __construct($url, $consumerKey, $accessToken = null)
     {
         $this->url = $url;
+        $this->consumerKey = $consumerKey;
+        $this->accessToken = $accessToken;
+/*
+        $this->addParameters(array('oauth_consumer_key' => $consumerKey));
+
+        if (!is_null($accessToken)) {
+            $this->addParameters(array('oauth_token' => $accessToken));
+        }
+*/
     }
 
     /**
@@ -47,29 +59,36 @@ class Builder
     /**
      * @return bool
      */
-    public function sign($consumerKey, $consumerSecret)
+    public function sign($consumerKey, $consumerSecret, $tokenSecret)
     {
-        $sign = new Signer();
-        $signature = $sign->sign($this->buildWithParams(), array('consumerKey' => $consumerKey, 'consumerSecret' => $consumerSecret), $this->type );
+        $sign = new Signer($consumerKey, $consumerSecret);
 
-        $this->addParameters(array('oauth_signature' => $signature));
-        return false;
+        $oauth_token = array('oauth_consumer_key'=>$this->consumerKey);
+        if (!is_null($this->accessToken)) {
+            $oauth_token = $oauth_token + array('oauth_token' => $this->accessToken);
+        }
+
+        $this->signature = $sign->sign($this->build(false), $oauth_token, $this->params, self::TYPE_GET, $tokenSecret);
+
+        return $this;
     }
 
     /**
      * @return string
      * @throws \Exception
      */
-    public function build()
+    public function build($with_params = true)
     {
 //        if (is_null($this->sign)) {
 //            throw new \Exception('sign before, soon of a bitch');
 //        }
 
         if ($this->type == self::TYPE_GET) {
-            return $this->buildGet();
+            return $this->buildGet($with_params);
         } elseif ($this->type == self::TYPE_SEARCH) {
-            return $this->buildSearch();
+            return $this->buildSearch($with_params);
+        } elseif ($this->type == self::TYPE_OAUTH) {
+            return $this->buildOauth($with_params);
         }
 
         throw new \Exception('Bad TYPE');
@@ -78,12 +97,12 @@ class Builder
     /**
      * @return string
      */
-    private function buildGet()
+    private function buildGet($with_params = true)
     {
         if ($this->ref === self::REF_CLASSIC) {
-            $content = $this->url . '/' . $this->object . '.' . $this->format . '/' . $this->id;
+            $content = $this->url . '/' . $this->object . '/' . $this->id;
         } elseif ($this->ref === self::REF_PARTNER) {
-            $content = $this->url . '/' . $this->namePartner . '/' . $this->idPartner . '/' . $this->object . '.' . $this->format;
+            $content = $this->url . '/' . $this->namePartner . '/' . $this->idPartner . '/' . $this->object;
         } else {
             throw new \Exception('Bad REF');
         }
@@ -92,21 +111,48 @@ class Builder
             $content .= '/' . $this->connector;
         }
 
-        return $this->buildWithParams($content);
+        $content .= '.' . $this->format;
+
+        $content = ($with_params ? $this->buildWithParams($content) : $content);
+
+        return $content;
     }
 
     /**
      * @return string
      */
-    private function buildSearch()
+    private function buildSearch($with_params = true)
     {
-        $content = $this->url . '/'. $this->object . '.' . $this->format .'/search';
+        $content = $this->url . '/'. $this->object . '.' . $this->format;
 
         if (!is_null($this->connector)) {
             throw new \Exception('Connector in search');
         }
 
-        return $this->buildWithParams($content);
+        $content = ($with_params ? $this->buildWithParams($content) : $content);
+
+        return $content;
+    }
+
+    /**
+     * @param bool $with_params
+     * @return string
+     */
+    private function buildOauth($with_params = true)
+    {
+        $content = $this->url . '/'. $this->object . '.' . $this->format;
+
+        if ($with_params && count($this->params) > 0) {
+            $content .= '?' . Signer::normalize_params($this->params, false);
+        } else{
+            $content .= '?oauth_consumer_key=' . $this->consumerKey;
+
+            if (!is_null($this->signature)){
+                $content .= '&oauth_signature=' . Signer::rawurlencode_rfc3986($this->signature);
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -136,7 +182,17 @@ class Builder
         }
 
         if (count($params) > 0) {
-            $url .= '?' . http_build_query($params, null, ini_get('arg_separator.output'), PHP_QUERY_RFC3986);
+            //$url .= '?' . http_build_query($params, null, ini_get('arg_separator.output'), PHP_QUERY_RFC3986);
+            $url .= '&' . Signer::normalize_params($params, false) . '&oauth_consumer_key=' . $this->consumerKey;
+        }
+
+
+        if (!is_null($this->accessToken)){
+            $url .= '&oauth_token=' . $this->accessToken;
+        }
+
+        if (!is_null($this->signature)){
+            $url .= '&oauth_signature=' . Signer::rawurlencode_rfc3986($this->signature);
         }
 
         return $url;
@@ -176,6 +232,15 @@ class Builder
     public function search()
     {
         $this->type = self::TYPE_SEARCH;
+        return $this;
+    }
+
+    /**
+     * @return $this
+     */
+    public function oauth()
+    {
+        $this->type = self::TYPE_OAUTH;
         return $this;
     }
 

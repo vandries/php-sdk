@@ -3,30 +3,52 @@
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use \MusicStory\SDK\Context;
-use \MusicStory\SDK\Builder;
+//use \MusicStory\SDK\Builder;
+use \MusicStory\SDK\Signer;
 
 /*Start connection to Music-Story's API*/
 //$ms_api = new MS_API('Consumer Key', 'Consumer Secret', 'Access Token', 'Token Secret');
-$ms_api = new Context('7909715aa5389f132efb9e75c47587758d170125', 'Consumer Secret', '72ed79402dc594cc1c5c4606cd7dbf234e4b8569', 'c86b461e24f6ad509f56fca3323199045accc754');
+//$ms_api = new Context('7909715aa5389f132efb9e75c47587758d170125', 'Consumer Secret', '72ed79402dc594cc1c5c4606cd7dbf234e4b8569', 'c86b461e24f6ad509f56fca3323199045accc754');
+
+require('MusicStoryAPI.class.php');
+
+
+$ms_signer = new Signer(array('identifier'=>'7909715aa5389f132efb9e75c47587758d170125', 'secret'=>'111f1145f9791a395333577d743925eb9526d0ca'));
+print_r($ms_signer->getSignature());
+
+die;
+
+$ms_api = new Context('7909715aa5389f132efb9e75c47587758d170125', '111f1145f9791a395333577d743925eb9526d0ca');
+$api = new MusicStoryApi('7909715aa5389f132efb9e75c47587758d170125', '111f1145f9791a395333577d743925eb9526d0ca');
 
 $ms_query = $ms_api->buildRequest();
 $ms_query
     ->get()
+    ->json()
     ->object('genre')
     ->id(5)
-    ->connector('artiste', 'Main')
+    //->connector('artiste', 'Main')
 ;
+
 $ms_api->execute($ms_query);
 
 echo $ms_query;
+
+echo "\n";
+echo "-------------------------------";
 echo "\n";
 
+$api->getGenre('5');
+echo "\n";
+/*
 $ms_query = $ms_api->buildRequest();
 $ms_query
     ->get()
     ->object('album')
     ->id(15436)
 ;
+
+$ms_api->execute($ms_query);
 
 echo $ms_query;
 echo "\n";
@@ -39,6 +61,8 @@ $ms_query
     ->idPartner('deezer', 40007)
 ;
 
+$ms_api->execute($ms_query);
+
 echo $ms_query;
 echo "\n";
 
@@ -49,6 +73,8 @@ $ms_query
     ->object('artist')
     ->filters(array('name' => 'bob'))
 ;
+
+$ms_api->execute($ms_query);
 
 echo $ms_query;
 echo "\n";
@@ -63,8 +89,12 @@ $ms_query
     ->fields(array('realname', 'main_role'))
 ;
 
+$ms_api->execute($ms_query);
+
 echo $ms_query;
 echo "\n";
+*/
+
 
 die;
 
